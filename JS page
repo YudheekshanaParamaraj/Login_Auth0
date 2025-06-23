@@ -1,0 +1,236 @@
+import React, { useState, useEffect } from "react";
+import { useAuth0 } from "@auth0/auth0-react";
+import "./App.css";
+
+function App() {
+  const { loginWithRedirect, logout, isAuthenticated, user, isLoading } = useAuth0();
+
+  const [users, setUsers] = useState([]);
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    mobile: "",
+    birthday: "",
+    gender: "Male",
+    details: ""
+  });
+  const [editingId, setEditingId] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortAsc, setSortAsc] = useState(true);
+  const [darkMode, setDarkMode] = useState(false);
+  const [ageFilter, setAgeFilter] = useState("");
+  const [genderFilter, setGenderFilter] = useState("");
+
+  useEffect(() => {
+    document.body.className = darkMode ? "dark" : "";
+  }, [darkMode]);
+
+  const calculateAge = (birthday) => {
+    const birth = new Date(birthday);
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const age = formData.birthday ? calculateAge(formData.birthday) : null;
+    if (editingId !== null) {
+      setUsers(users.map((u) =>
+        u.id === editingId ? { ...u, ...formData, age } : u
+      ));
+      setEditingId(null);
+    } else {
+      const newUser = {
+        id: Date.now(),
+        ...formData,
+        age
+      };
+      setUsers([...users, newUser]);
+    }
+    setFormData({
+      name: "",
+      email: "",
+      mobile: "",
+      birthday: "",
+      gender: "Male",
+      details: ""
+    });
+  };
+
+  const handleEdit = (user) => {
+    setFormData({
+      name: user.name,
+      email: user.email,
+      mobile: user.mobile,
+      birthday: user.birthday,
+      gender: user.gender,
+      details: user.details
+    });
+    setEditingId(user.id);
+  };
+
+  const handleDelete = (id) => {
+    if (window.confirm("Are you sure you want to delete this user?")) {
+      setUsers(users.filter((user) => user.id !== id));
+    }
+  };
+
+  const exportToCSV = () => {
+    const headers = ["Name", "Email", "Mobile", "Birthday", "Gender", "Age", "Details"];
+    const rows = users.map(u =>
+      [u.name, u.email, u.mobile, u.birthday, u.gender, u.age, u.details].map(field =>
+        `"${(field ?? "").replace(/"/g, '""')}"`
+      ).join(",")
+    );
+    const content = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([content], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "users.csv";
+    a.click();
+  };
+
+  const ageInGroup = (age) => {
+    if (ageFilter === "<18") return age < 18;
+    if (ageFilter === "18-30") return age >= 18 && age <= 30;
+    if (ageFilter === "31-50") return age >= 31 && age <= 50;
+    if (ageFilter === ">50") return age > 50;
+    return true;
+  };
+
+  const filteredUsers = users
+    .filter(u =>
+      (u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        u.email.toLowerCase().includes(searchTerm.toLowerCase()))
+    )
+    .filter(u => (genderFilter ? u.gender === genderFilter : true))
+    .filter(u => (ageFilter ? ageInGroup(u.age) : true))
+    .sort((a, b) => sortAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name));
+
+  if (isLoading) return <div className="loading">Loading...</div>;
+
+  if (!isAuthenticated) {
+    return (
+      <div className="login-container">
+        <div className="login-card">
+          <h2>Welcome</h2>
+          <p>Please log in to manage users</p>
+          <button onClick={() => loginWithRedirect()}>Login with Auth0</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="app-container">
+      <div className="sidebar">
+        <img src={user.picture} alt="Profile" className="profile-pic" />
+        <h3>{user.name}</h3>
+        <p>{user.email}</p>
+        <button className="logout-btn" onClick={() => logout({ returnTo: window.location.origin })}>
+          Logout
+        </button>
+        <button className="toggle-btn" onClick={() => setDarkMode(!darkMode)}>
+          Toggle {darkMode ? "Light" : "Dark"} Mode
+        </button>
+      </div>
+
+      <div className="main-content">
+        <h1>User Manager</h1>
+
+        <div className="search-sort">
+          <input
+            type="text"
+            placeholder="Search by name or email"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <select onChange={(e) => setGenderFilter(e.target.value)} value={genderFilter}>
+            <option value="">All Genders</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Other">Other</option>
+          </select>
+          <select onChange={(e) => setAgeFilter(e.target.value)} value={ageFilter}>
+            <option value="">All Ages</option>
+            <option value="<18">Under 18</option>
+            <option value="18-30">18–30</option>
+            <option value="31-50">31–50</option>
+            <option value=">50">Above 50</option>
+          </select>
+          <button onClick={() => setSortAsc(!sortAsc)}>Sort {sortAsc ? "⬇️" : "⬆️"}</button>
+          <button onClick={exportToCSV} className="export-btn">📄 Export CSV</button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="user-form">
+          <input
+            type="text"
+            placeholder="Full Name"
+            value={formData.name}
+            required
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+          />
+          <input
+            type="email"
+            placeholder="Email"
+            value={formData.email}
+            required
+            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+          />
+          <input
+            type="tel"
+            placeholder="Mobile Number"
+            value={formData.mobile}
+            onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
+          />
+          <input
+            type="date"
+            value={formData.birthday}
+            onChange={(e) => setFormData({ ...formData, birthday: e.target.value })}
+          />
+          <select
+            value={formData.gender}
+            onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+          >
+            <option>Male</option>
+            <option>Female</option>
+            <option>Other</option>
+          </select>
+          <textarea
+            placeholder="Additional details"
+            value={formData.details}
+            onChange={(e) => setFormData({ ...formData, details: e.target.value })}
+          />
+          <button type="submit">{editingId ? "Update" : "Add"} User</button>
+        </form>
+
+        <ul className="user-list">
+          {filteredUsers.map((user) => (
+            <li key={user.id} className="user-card">
+              <div>
+                <strong>{user.name}</strong>
+                <p>{user.email}</p>
+                <p>{user.mobile}</p>
+                <p>{user.birthday} ({user.age} years)</p>
+                <p>{user.gender}</p>
+                <p>{user.details}</p>
+              </div>
+              <div className="actions">
+                <button className="edit" onClick={() => handleEdit(user)}>Edit</button>
+                <button className="delete" onClick={() => handleDelete(user.id)}>Delete</button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+export default App;
